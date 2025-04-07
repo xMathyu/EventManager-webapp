@@ -1,28 +1,60 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { Event } from "@/types/event";
 import { eventService } from "@/services/eventService";
 import { use } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+// Dynamically import the Card components
+const Card = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.Card)
+);
+const CardContent = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardContent)
+);
+const CardDescription = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardDescription)
+);
+const CardHeader = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardHeader)
+);
+const CardTitle = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardTitle)
+);
+
+// Dynamically import the Dialog components
+const Dialog = dynamic(() =>
+  import("@/components/ui/dialog").then((mod) => mod.Dialog)
+);
+const DialogContent = dynamic(() =>
+  import("@/components/ui/dialog").then((mod) => mod.DialogContent)
+);
+const DialogDescription = dynamic(() =>
+  import("@/components/ui/dialog").then((mod) => mod.DialogDescription)
+);
+const DialogFooter = dynamic(() =>
+  import("@/components/ui/dialog").then((mod) => mod.DialogFooter)
+);
+const DialogHeader = dynamic(() =>
+  import("@/components/ui/dialog").then((mod) => mod.DialogHeader)
+);
+const DialogTitle = dynamic(() =>
+  import("@/components/ui/dialog").then((mod) => mod.DialogTitle)
+);
+const DialogTrigger = dynamic(() =>
+  import("@/components/ui/dialog").then((mod) => mod.DialogTrigger)
+);
+
+// Loading component
+const LoadingSpinner = () => (
+  <div className="flex items-center justify-center min-h-[400px]">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+  </div>
+);
 
 export default function EventDetails({
   params,
@@ -30,47 +62,45 @@ export default function EventDetails({
   params: Promise<{ id: string }>;
 }) {
   const resolvedParams = use(params);
-  const [event, setEvent] = useState<Event | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const queryClient = useQueryClient();
 
-  const loadEvent = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await eventService.getEventById(parseInt(resolvedParams.id));
-      setEvent(data);
-    } catch (error) {
-      setError("Failed to load event details. Please try again later.");
-      console.error("Error loading event:", error);
-      toast.error("Failed to load event details. Please try again later.");
-    } finally {
-      setLoading(false);
-    }
-  }, [resolvedParams.id]);
+  const {
+    data: event,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["event", resolvedParams.id],
+    queryFn: async () => {
+      try {
+        const data = await eventService.getEventById(
+          parseInt(resolvedParams.id)
+        );
+        return data;
+      } catch (error) {
+        console.error("Error loading event:", error);
+        toast.error("Failed to load event details. Please try again later.");
+        throw error;
+      }
+    },
+  });
 
-  useEffect(() => {
-    loadEvent();
-  }, [loadEvent]);
-
-  const handleDelete = async () => {
-    try {
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
       await eventService.deleteEvent(parseInt(resolvedParams.id));
+    },
+    onSuccess: () => {
       toast.success("Event deleted successfully.");
+      queryClient.invalidateQueries({ queryKey: ["events"] });
       window.location.href = "/";
-    } catch (error) {
-      setError("Failed to delete event. Please try again later.");
-      console.error("Error deleting event:", error);
+    },
+    onError: () => {
       toast.error("Failed to delete event. Please try again later.");
-    }
-  };
+    },
+  });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-      </div>
-    );
+  if (isLoading) {
+    return <LoadingSpinner />;
   }
 
   if (error) {
@@ -78,7 +108,9 @@ export default function EventDetails({
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-red-500 mb-2">Error</h2>
-          <p className="text-gray-600">{error}</p>
+          <p className="text-gray-600">
+            Failed to load event details. Please try again later.
+          </p>
         </div>
       </div>
     );
@@ -124,7 +156,13 @@ export default function EventDetails({
                 >
                   Cancel
                 </Button>
-                <Button variant="destructive" onClick={handleDelete}>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    deleteMutation.mutate();
+                    setShowDeleteDialog(false);
+                  }}
+                >
                   Delete
                 </Button>
               </DialogFooter>
