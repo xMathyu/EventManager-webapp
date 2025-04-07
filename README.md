@@ -1,6 +1,6 @@
 # Event Management Application
 
-A modern web application for managing events, built with Next.js 14 and TypeScript. This application allows users to create, view, edit, and delete events with a beautiful and responsive user interface.
+A modern web application for managing events, built with Next.js 15 and TypeScript. This application allows users to create, view, edit, and delete events with a beautiful and responsive user interface.
 
 ## Features
 
