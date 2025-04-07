@@ -14,7 +14,7 @@ A modern web application for managing events, built with Next.js 14 and TypeScri
 
 ## Tech Stack
 
-- **Framework:** Next.js 14
+- **Framework:** Next.js 15
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
 - **UI Components:** Shadcn UI
