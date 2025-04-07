@@ -18,6 +18,12 @@ import { Button } from "@/components/ui/button";
 import { Check, ChevronsUpDown, MapPin, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const NOMINATIM_API_URL = process.env.NEXT_PUBLIC_NOMINATIM_API_URL;
+
+if (!NOMINATIM_API_URL) {
+  throw new Error("NOMINATIM_API_URL environment variable is not defined");
+}
+
 interface Location {
   display_name: string;
   lat: string;
@@ -50,7 +56,7 @@ export function LocationAutocomplete({
       setLoading(true);
       try {
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          `${NOMINATIM_API_URL}/search?format=json&q=${encodeURIComponent(
             query
           )}&limit=5`
         );
