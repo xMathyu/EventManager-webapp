@@ -1,52 +1,64 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
-import { Event } from "@/types/event";
 import { eventService } from "@/services/eventService";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+
+// Dynamically import the Card components with loading fallback
+const Card = dynamic(
+  () => import("@/components/ui/card").then((mod) => mod.Card),
+  {
+    loading: () => (
+      <div className="animate-pulse bg-gray-200 h-48 rounded-lg" />
+    ),
+  }
+);
+const CardHeader = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardHeader)
+);
+const CardTitle = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardTitle)
+);
+const CardDescription = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardDescription)
+);
+const CardContent = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardContent)
+);
+const CardFooter = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardFooter)
+);
+
+// Loading component
+const LoadingSpinner = () => (
+  <div className="flex items-center justify-center min-h-[400px]">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+  </div>
+);
 
 export default function Home() {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
 
-  const loadEvents = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await eventService.getAllEvents(currentPage);
-      setEvents(response.content);
-      setTotalPages(response.totalPages);
-    } catch (error) {
-      setError("Failed to load events. Please try again later.");
-      console.error("Error loading events:", error);
-      toast.error("Failed to load events. Please try again later.");
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPage]);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["events", currentPage],
+    queryFn: async () => {
+      try {
+        const response = await eventService.getAllEvents(currentPage);
+        return response;
+      } catch (error) {
+        console.error("Error loading events:", error);
+        toast.error("Failed to load events. Please try again later.");
+        throw error;
+      }
+    },
+  });
 
-  useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-      </div>
-    );
+  if (isLoading) {
+    return <LoadingSpinner />;
   }
 
   if (error) {
@@ -54,11 +66,16 @@ export default function Home() {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-red-500 mb-2">Error</h2>
-          <p className="text-gray-600">{error}</p>
+          <p className="text-gray-600">
+            Failed to load events. Please try again later.
+          </p>
         </div>
       </div>
     );
   }
+
+  const events = data?.content || [];
+  const totalPages = data?.totalPages || 0;
 
   return (
     <div className="container mx-auto py-8">
@@ -69,38 +86,40 @@ export default function Home() {
         </Link>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {events.map((event) => (
-          <Card key={event.id} className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle>{event.title}</CardTitle>
-              <CardDescription>{event.location}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4 line-clamp-3">
-                {event.description}
-              </p>
-              <div className="space-y-2 text-sm text-gray-500">
-                <p>
-                  <span className="font-medium">Start:</span>{" "}
-                  {new Date(event.startDate).toLocaleDateString()}
+      <Suspense fallback={<LoadingSpinner />}>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {events.map((event) => (
+            <Card key={event.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <CardTitle>{event.title}</CardTitle>
+                <CardDescription>{event.location}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-600 mb-4 line-clamp-3">
+                  {event.description}
                 </p>
-                <p>
-                  <span className="font-medium">End:</span>{" "}
-                  {new Date(event.endDate).toLocaleDateString()}
-                </p>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Link href={`/events/${event.id}`} className="w-full">
-                <Button variant="outline" className="w-full">
-                  View Details
-                </Button>
-              </Link>
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
+                <div className="space-y-2 text-sm text-gray-500">
+                  <p>
+                    <span className="font-medium">Start:</span>{" "}
+                    {new Date(event.startDate).toLocaleDateString()}
+                  </p>
+                  <p>
+                    <span className="font-medium">End:</span>{" "}
+                    {new Date(event.endDate).toLocaleDateString()}
+                  </p>
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Link href={`/events/${event.id}`} className="w-full">
+                  <Button variant="outline" className="w-full">
+                    View Details
+                  </Button>
+                </Link>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </Suspense>
 
       {totalPages > 1 && (
         <div className="mt-8 flex justify-center space-x-2">

@@ -1,15 +1,43 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { eventService } from "@/services/eventService";
 import { use } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import dynamic from "next/dynamic";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+// Dynamically import the Card components
+const Card = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.Card)
+);
+const CardContent = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardContent)
+);
+const CardHeader = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardHeader)
+);
+const CardTitle = dynamic(() =>
+  import("@/components/ui/card").then((mod) => mod.CardTitle)
+);
+
+// Dynamically import the Input components
+const Input = dynamic(() =>
+  import("@/components/ui/input").then((mod) => mod.Input)
+);
+const Textarea = dynamic(() =>
+  import("@/components/ui/textarea").then((mod) => mod.Textarea)
+);
+
+// Loading component
+const LoadingSpinner = () => (
+  <div className="flex items-center justify-center min-h-[400px]">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+  </div>
+);
 
 export default function EventForm({
   params,
@@ -19,8 +47,7 @@ export default function EventForm({
   const router = useRouter();
   const resolvedParams = use(params);
   const isEdit = resolvedParams.id !== "new";
-  const [loading, setLoading] = useState(isEdit);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -29,61 +56,65 @@ export default function EventForm({
     endDate: "",
   });
 
-  const loadEvent = useCallback(async () => {
-    try {
-      const event = await eventService.getEventById(
-        parseInt(resolvedParams.id)
-      );
-      setFormData({
-        title: event.title,
-        description: event.description,
-        location: event.location,
-        startDate: event.startDate.slice(0, 16), // Format for datetime-local input
-        endDate: event.endDate.slice(0, 16),
-      });
-    } catch (error) {
-      setError("Failed to load event. Please try again later.");
-      console.error("Error loading event:", error);
-      toast.error("Failed to load event. Please try again later.");
-    } finally {
-      setLoading(false);
-    }
-  }, [resolvedParams.id]);
+  const { isLoading: isLoadingEvent } = useQuery({
+    queryKey: ["event", resolvedParams.id],
+    queryFn: async () => {
+      try {
+        const data = await eventService.getEventById(
+          parseInt(resolvedParams.id)
+        );
+        setFormData({
+          title: data.title,
+          description: data.description,
+          location: data.location,
+          startDate: data.startDate.slice(0, 16),
+          endDate: data.endDate.slice(0, 16),
+        });
+        return data;
+      } catch (error) {
+        console.error("Error loading event:", error);
+        toast.error("Failed to load event. Please try again later.");
+        throw error;
+      }
+    },
+    enabled: isEdit,
+  });
 
-  useEffect(() => {
-    if (isEdit) {
-      loadEvent();
-    }
-  }, [isEdit, loadEvent]);
+  const createMutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      await eventService.createEvent(data);
+    },
+    onSuccess: () => {
+      toast.success("Event created successfully.");
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      router.push("/");
+    },
+    onError: () => {
+      toast.error("Failed to create event. Please try again later.");
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      await eventService.updateEvent(parseInt(resolvedParams.id), data);
+    },
+    onSuccess: () => {
+      toast.success("Event updated successfully.");
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["event", resolvedParams.id] });
+      router.push("/");
+    },
+    onError: () => {
+      toast.error("Failed to update event. Please try again later.");
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      if (isEdit) {
-        await eventService.updateEvent(parseInt(resolvedParams.id), formData);
-        toast.success("Event updated successfully.");
-      } else {
-        await eventService.createEvent(formData);
-        toast.success("Event created successfully.");
-      }
-      router.push("/");
-    } catch (error) {
-      setError(
-        `Failed to ${
-          isEdit ? "update" : "create"
-        } event. Please try again later.`
-      );
-      console.error(`Error ${isEdit ? "updating" : "creating"} event:`, error);
-      toast.error(
-        `Failed to ${
-          isEdit ? "update" : "create"
-        } event. Please try again later.`
-      );
-    } finally {
-      setLoading(false);
+    if (isEdit) {
+      updateMutation.mutate(formData);
+    } else {
+      createMutation.mutate(formData);
     }
   };
 
@@ -94,12 +125,8 @@ export default function EventForm({
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-      </div>
-    );
+  if (isEdit && isLoadingEvent) {
+    return <LoadingSpinner />;
   }
 
   return (
@@ -109,12 +136,6 @@ export default function EventForm({
           <CardTitle>{isEdit ? "Edit Event" : "Create New Event"}</CardTitle>
         </CardHeader>
         <CardContent>
-          {error && (
-            <div className="bg-red-50 text-red-500 p-4 rounded mb-6">
-              {error}
-            </div>
-          )}
-
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="title">Title</Label>
@@ -182,7 +203,10 @@ export default function EventForm({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button
+                type="submit"
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
                 {isEdit ? "Update Event" : "Create Event"}
               </Button>
             </div>
