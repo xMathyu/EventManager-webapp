@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { eventService } from "@/services/eventService";
 import { use } from "react";
@@ -61,20 +61,13 @@ export default function EventForm({
     endDate: "",
   });
 
-  const { isLoading: isLoadingEvent } = useQuery({
+  const { data: event, isLoading: isLoadingEvent } = useQuery({
     queryKey: ["event", resolvedParams.id],
     queryFn: async () => {
       try {
         const data = await eventService.getEventById(
           parseInt(resolvedParams.id)
         );
-        setFormData({
-          title: data.title,
-          description: data.description,
-          location: data.location,
-          startDate: data.startDate.slice(0, 16),
-          endDate: data.endDate.slice(0, 16),
-        });
         return data;
       } catch (error) {
         console.error("Error loading event:", error);
@@ -84,6 +77,18 @@ export default function EventForm({
     },
     enabled: isEdit,
   });
+
+  useEffect(() => {
+    if (event) {
+      setFormData({
+        title: event.title,
+        description: event.description,
+        location: event.location,
+        startDate: event.startDate.slice(0, 16),
+        endDate: event.endDate.slice(0, 16),
+      });
+    }
+  }, [event]);
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
